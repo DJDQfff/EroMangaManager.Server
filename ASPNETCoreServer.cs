@@ -3,25 +3,54 @@ using EroMangaManager.Core.DTOs;
 using EroMangaManager.Core.Models;
 using EroMangaManager.Core.ViewModels;
 using PdfSharp.Pdf.Filters;
+using Server;
 using SharpCompress.Archives;
+using System.Collections.ObjectModel;
+using System.Net;
+using System.Net.Sockets;
+using System.Reflection.Emit;
 
 namespace EroMangaManager.Server;
 
 public class ASPNETCoreServer
 {
-    Task self;
+    Task _serverTask;
     readonly EroMangaManager.Core.ViewModels.ObservableCollectionVM viewmodel;
+    // ───────── 展示属性 ─────────
+    public string Ip { get; private set; } 
+    public int Port { get;  set; } = 12965; // 默认值，启动后可由实际值覆盖
+
+    public string FullAddress => $"http://{Ip}:{Port}";
+    public bool IsRunning => _serverTask?.Status == TaskStatus.Running;
+
+    // ───────── 事件 ─────────
     public event Action<Manga> EventDeleteMang;
+    public event Action<LogEntry> AddLog;
+
+    public ObservableCollection<LogEntry> Logs { get; } = [];
+
     public ASPNETCoreServer(ObservableCollectionVM collectionVM)
     {
         viewmodel = collectionVM;
-
+        Ip = GetLocalIP();
+    }
+    private static string GetLocalIP()
+    {
+        return Dns.GetHostEntry(Dns.GetHostName())
+            .AddressList
+            .First(ip => ip.AddressFamily == AddressFamily.InterNetwork)
+            .ToString();
     }
 
+    public void ValidatePort(int expectedPort = 12965)
+    {
+        if (Port != expectedPort)
+            throw new InvalidOperationException($"端口不匹配！实际端口：{Port}，预设端口：{expectedPort}");
+    }
 
     public async Task StartServer()
     {
-        if (self?.Status == TaskStatus.Running) return;
+        if (IsRunning) return;
         var builder = WebApplication.CreateBuilder();
 
         // 添加这行代码，允许同步 IO，downloads中使用的是同步方法
@@ -36,17 +65,51 @@ public class ASPNETCoreServer
         });
         var app = builder.Build();
         app.Urls.Add("http://*:12965");
+
+        MapHttpMethod(app);
+        _serverTask = app.RunAsync();
+
+    }
+
+    private void MapHttpMethod(WebApplication app)
+    {
+        //中间件：记录日志
+        app.Use(async (context, next) =>
+        {
+            var start = DateTime.Now;
+            var method = context.Request.Method;
+            var path = context.Request.Path;
+            var clientIp = context.Connection.RemoteIpAddress;
+
+            await next();
+
+            var elapsed = DateTime.Now - start;
+            var statusCode = context.Response.StatusCode;
+
+            var entry = new LogEntry
+            {
+                Time = DateTime.Now,
+                Level = "INFO",
+                IPAddress = clientIp,
+                 StatusCode = statusCode,
+                  Method = method,
+                   Path = path, ElapsedTime = elapsed,
+            };
+            AddLog?.Invoke(entry);
+        });
+
+
         app.MapGet("/api/health", () => Results.Ok());
         app.MapGet("/tags", () => Results.Ok(viewmodel.AllTags));
 
-        app.MapGet("/folders/basicinfo", () => Results.Ok(viewmodel.MangaFolders.Select(x => new MangasGroupDTO( x) )));
+        app.MapGet("/folders/basicinfo", () => Results.Ok(viewmodel.MangaFolders.Select(x => new MangasGroupDTO(x))));
 
         app.MapGet("/folders/{guid}", (string guid) =>
         {
             var folder = viewmodel.MangaFolders.FirstOrDefault(x => x.Guid == guid);
             if (folder != null)
             {
-                var folderDTO =new MangasGroupDTO(folder);
+                var folderDTO = new MangasGroupDTO(folder);
                 return Results.Ok(folderDTO);
             }
             else
@@ -71,8 +134,8 @@ public class ASPNETCoreServer
             var group = viewmodel.MangaFolders.FirstOrDefault(x => x.Guid == guid);
             if (group != null)
             {
-                
-                var dtos =(group.Mangas.Skip(index).Take(amount).Select(x => new MangaDTO(x)));
+
+                var dtos = (group.Mangas.Skip(index).Take(amount).Select(x => new MangaDTO(x)));
                 return Results.Ok(dtos);
             }
             else
@@ -80,7 +143,7 @@ public class ASPNETCoreServer
                 return Results.NotFound();
             }
         });
-        app.MapGet("/mangas", () => Results.Ok(viewmodel.MangaList.Select(x =>new MangaDTO(x))));
+        app.MapGet("/mangas", () => Results.Ok(viewmodel.MangaList.Select(x => new MangaDTO(x))));
 
         app.MapGet("/mangas/{guid}", (string guid) =>
         {
@@ -88,7 +151,7 @@ public class ASPNETCoreServer
 
             if (manga != null)
             {
-                var mangaDTO =new MangaDTO(manga);
+                var mangaDTO = new MangaDTO(manga);
                 return Results.Ok(mangaDTO);
             }
             else
@@ -185,15 +248,15 @@ public class ASPNETCoreServer
         {
             var file = viewmodel.MangaList.SingleOrDefault(x => x.Guid == guid)?.CoverPath;
 
-            return file is null ? Results.NotFound() : Results.File(file);
+            return File.Exists(file)?Results.File(file) :Results.NotFound()  ;
         });
 
         app.MapDelete("/mangas/{guid}", async (string guid) =>
         {
             var manga = viewmodel.MangaList.SingleOrDefault(x => x.Guid == guid);
-            if (manga != null&& guid != null)
+            if (manga != null && guid != null)
             {
-                
+
                 this.EventDeleteMang?.Invoke(manga);
                 return Results.Ok();
             }
@@ -202,7 +265,5 @@ public class ASPNETCoreServer
                 return Results.NotFound();
             }
         });
-        self = app.RunAsync();
-
     }
 }
