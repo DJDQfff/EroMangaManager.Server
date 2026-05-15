@@ -24,7 +24,7 @@ public class ASPNETCoreServer
     public bool IsRunning => _serverTask?.Status == TaskStatus.Running;
 
     // ───────── 事件 ─────────
-    public event Action<Manga> EventDeleteMang;
+    public event Func <Manga,Task<bool>> EventDeleteMang;
     public event Action<LogEntry> AddLog;
 
     public ObservableCollection<LogEntry> Logs { get; } = [];
@@ -254,16 +254,14 @@ public class ASPNETCoreServer
         app.MapDelete("/mangas/{guid}", async (string guid) =>
         {
             var manga = viewmodel.MangaList.SingleOrDefault(x => x.Guid == guid);
-            if (manga != null && guid != null)
+            if (manga != null )
             {
 
-                this.EventDeleteMang?.Invoke(manga);
-                return Results.Ok();
+              var result= await this.EventDeleteMang?.Invoke(manga);
+              return result? Results.Ok():Results.NotFound();
+                
             }
-            else
-            {
-                return Results.NotFound();
-            }
+            return Results.NotFound();
         });
     }
 }
