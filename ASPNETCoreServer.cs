@@ -251,17 +251,24 @@ public class ASPNETCoreServer
             return File.Exists(file)?Results.File(file) :Results.NotFound()  ;
         });
 
-        app.MapDelete("/mangas/{guid}", async (string guid) =>
+        app.MapDelete("/mangas/{guid}" , async (string guid) =>
         {
             var manga = viewmodel.MangaList.SingleOrDefault(x => x.Guid == guid);
-            if (manga != null )
-            {
+            if (manga is null)
+                return Results.NotFound();
 
-              var result= await this.EventDeleteMang?.Invoke(manga);
-              return result? Results.Ok():Results.NotFound();
-                
+            if (EventDeleteMang is null)
+                return Results.StatusCode(500);
+
+            try
+            {
+                var success = await EventDeleteMang.Invoke(manga);
+                return success ? Results.Ok() : Results.StatusCode(500);
             }
-            return Results.NotFound();
+            catch
+            {
+                return Results.StatusCode(500);
+            }
         });
     }
 }
