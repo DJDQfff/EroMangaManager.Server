@@ -167,14 +167,17 @@ public class ASPNETCoreServer
             switch (manga.Type)
             {
                 case "":
-                    var archive = SharpCompress.Archives.Zip.ZipArchive.Create();
-                    archive.AddAllFromDirectory(manga.FilePath);
+                    using (var archive = SharpCompress.Archives.Zip.ZipArchive.Create())
+                    {
+                        archive.AddAllFromDirectory(manga.FilePath);
 
                     //context.Response.ContentLength = manga.FileSize;
                     context.Response.Headers["X-Estimated-Size"] = manga.FileSize.ToString();
                     //context.Response.Headers.Append("X-Estimated-Size", manga.FileSize.ToString());
                     //context.Response.Headers.Append("Access-Control-Expose-Headers", "X-Estimated-Size");
                     archive.SaveTo(context.Response.Body, new SharpCompress.Writers.WriterOptions(SharpCompress.Common.CompressionType.None));
+
+                    }
 
                     //context.Response.Body.Position = 0;
                     // 结束响应
