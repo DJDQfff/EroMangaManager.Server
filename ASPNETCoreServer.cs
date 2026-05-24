@@ -1,10 +1,17 @@
 ﻿
 using EroMangaManager.Core.DTOs;
+using EroMangaManager.Core.IOOperation;
 using EroMangaManager.Core.Models;
 using EroMangaManager.Core.ViewModels;
+
+using Microsoft.EntityFrameworkCore;
+
 using PdfSharp.Pdf.Filters;
+
 using Server;
+
 using SharpCompress.Archives;
+
 using System.Collections.ObjectModel;
 using System.Net;
 using System.Net.Sockets;
@@ -26,9 +33,9 @@ public class ASPNETCoreServer
     // ───────── 事件 ─────────
     public event Func <Manga,Task<bool>> EventDeleteMang;
     public event Action<LogEntry> AddLog;
-
+    public event Action<IEnumerable<Manga>> MangasRequested;
     public ObservableCollection<LogEntry> Logs { get; } = [];
-
+    private static readonly SemaphoreSlim _coverSemaphore = new(1 , 1);
     public ASPNETCoreServer(ObservableCollectionVM collectionVM)
     {
         viewmodel = collectionVM;
@@ -122,20 +129,21 @@ public class ASPNETCoreServer
             var group = viewmodel.MangaFolders.FirstOrDefault(x => x.Guid == guid);
             if (group != null)
             {
-                return Results.Ok(group.Mangas.Count);
+                return Results.Ok(group.Count);
             }
             else
             {
                 return Results.NotFound();
             }
         });
-        app.MapGet("/folders/{guid}/{index}/{amount}", (string guid, int index, int amount) =>
+        app.MapGet("/folders/{guid}/{index}/{amount}", async (string guid, int index, int amount) =>
         {
             var group = viewmodel.MangaFolders.FirstOrDefault(x => x.Guid == guid);
             if (group != null)
             {
-
-                var dtos = (group.Mangas.Skip(index).Take(amount).Select(x => new MangaDTO(x)));
+                var mangas = group.Mangas.Skip(index).Take(amount);
+                MangasRequested?.Invoke(mangas);
+                var dtos = mangas.ToAsyncEnumerable().Select(x => new MangaDTO(x));
                 return Results.Ok(dtos);
             }
             else
@@ -247,11 +255,15 @@ public class ASPNETCoreServer
         //);
         #endregion
         //app.MapGet("/covers/all", () => Results.Ok(viewmodel.MangaList.Select(x => x.CoverPath)));
-        app.MapGet("/covers/{guid}", (string guid) =>
+        app.MapGet("/covers/{guid}", async (string guid,HttpContext httpContext) =>
         {
-            var file = viewmodel.MangaList.SingleOrDefault(x => x.Guid == guid)?.CoverPath;
+                var file = viewmodel.MangaList.SingleOrDefault(x => x.Guid == guid);
+                var cover = file?.CoverPath;
 
-            return File.Exists(file)?Results.File(file) :Results.NotFound()  ;
+            return File.Exists(cover) ? Results.File(cover) : Results.NotFound();
+
+
+
         });
 
         app.MapDelete("/mangas/{guid}" , async (string guid) =>
