@@ -109,11 +109,11 @@ public class ASPNETCoreServer
         app.MapGet("/api/health", () => Results.Ok());
         app.MapGet("/tags", () => Results.Ok(viewmodel.AllTags));
 
-        app.MapGet("/folders/basicinfo", () => Results.Ok(viewmodel.MangaFolders.Select(x => new MangasGroupDTO(x))));
+        app.MapGet("/folders/basicinfo", () => Results.Ok(viewmodel.MangasGroups.Select(x => new MangasGroupDTO(x))));
 
         app.MapGet("/folders/{guid}", (string guid) =>
         {
-            var folder = viewmodel.MangaFolders.FirstOrDefault(x => x.Guid == guid);
+            var folder = viewmodel.MangasGroups.FirstOrDefault(x => x.Guid == guid);
             if (folder != null)
             {
                 var folderDTO = new MangasGroupDTO(folder);
@@ -126,7 +126,7 @@ public class ASPNETCoreServer
         });
         app.MapGet("/folders/{guid}/count", (string guid) =>
         {
-            var group = viewmodel.MangaFolders.FirstOrDefault(x => x.Guid == guid);
+            var group = viewmodel.MangasGroups.FirstOrDefault(x => x.Guid == guid);
             if (group != null)
             {
                 return Results.Ok(group.Count);
@@ -138,7 +138,7 @@ public class ASPNETCoreServer
         });
         app.MapGet("/folders/{guid}/{index}/{amount}", async (string guid, int index, int amount) =>
         {
-            var group = viewmodel.MangaFolders.FirstOrDefault(x => x.Guid == guid);
+            var group = viewmodel.MangasGroups.FirstOrDefault(x => x.Guid == guid);
             if (group != null)
             {
                 var mangas = group.Mangas.Skip(index).Take(amount);
