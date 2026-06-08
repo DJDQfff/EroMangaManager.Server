@@ -33,7 +33,7 @@ public class ASPNETCoreServer
     // ───────── 事件 ─────────
     public event Func <Manga,Task<bool>> EventDeleteMang;
     public event Action<LogEntry> AddLog;
-    public event Action<IEnumerable<Manga>> MangasRequested;
+    public event Func<IEnumerable<Manga>,Task> MangasRequested;
     public ObservableCollection<LogEntry> Logs { get; } = [];
     private static readonly SemaphoreSlim _coverSemaphore = new(1 , 1);
     public ASPNETCoreServer(ObservableCollectionVM collectionVM)
@@ -136,13 +136,13 @@ public class ASPNETCoreServer
                 return Results.NotFound();
             }
         });
-        app.MapGet("/folders/{guid}/{index}/{amount}", async (string guid, int index, int amount) =>
+        _ = app.MapGet("/folders/{guid}/{index}/{amount}" , async (string guid , int index , int amount) =>
         {
             var group = viewmodel.MangasGroups.FirstOrDefault(x => x.Guid == guid);
             if (group != null)
             {
                 var mangas = group.Mangas.Skip(index).Take(amount);
-                MangasRequested?.Invoke(mangas);
+                await MangasRequested?.Invoke(mangas);
                 var dtos = mangas.ToAsyncEnumerable().Select(x => new MangaDTO(x));
                 return Results.Ok(dtos);
             }
