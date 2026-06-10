@@ -65,15 +65,31 @@ public class ASPNETCoreServer
         {
             options.AllowSynchronousIO = true;
         });
-        // 添加这行代码，允许同步 IO
-        builder.WebHost.ConfigureKestrel(options =>
+        //  注册 CORS 服务
+        builder.Services.AddCors(options =>
         {
-            options.AllowSynchronousIO = true;
+            options.AddDefaultPolicy(policy =>
+            {
+                policy.AllowAnyOrigin() // 允许 WebAssembly 的地址
+                      .AllowAnyMethod()
+                      .AllowAnyHeader();
+            });
         });
-        var app = builder.Build();
-        app.Urls.Add("http://*:12965");
 
+        // ... 构建 app
+
+
+
+        var app = builder.Build();
+
+        //  启用 CORS 中间件
+        app.UseCors();
+
+
+        app.Urls.Add("http://*:12965");
         MapHttpMethod(app);
+
+
         _serverTask = app.RunAsync();
 
     }
