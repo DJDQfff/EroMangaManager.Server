@@ -1,14 +1,12 @@
 ﻿
-using EroMangaManager.Core.DTOs;
-using EroMangaManager.Core.IOOperation;
-using EroMangaManager.Core.Models;
-using EroMangaManager.Core.ViewModels;
+using Core.DTOs;
+using Core.IOOperation;
+using Core.Models;
+using Core.ViewModels;
 
 using Microsoft.EntityFrameworkCore;
 
 using PdfSharp.Pdf.Filters;
-
-using Server;
 
 using SharpCompress.Archives;
 
@@ -17,14 +15,13 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection.Emit;
 
-namespace EroMangaManager.Server;
+namespace Server;
 
-public class ASPNETCoreServer
+public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
 {
-    Task _serverTask;
-    readonly EroMangaManager.Core.ViewModels.ObservableCollectionVM viewmodel;
+    Task? _serverTask;
     // ───────── 展示属性 ─────────
-    public string Ip { get; private set; } 
+    public string Ip { get; private set; } = GetLocalIP();
     public int Port { get;  set; } = 12965; // 默认值，启动后可由实际值覆盖
 
     public string FullAddress => $"http://{Ip}:{Port}";
@@ -36,11 +33,7 @@ public class ASPNETCoreServer
     public event Func<IEnumerable<Manga>,Task> MangasRequested;
     public ObservableCollection<LogEntry> Logs { get; } = [];
     private static readonly SemaphoreSlim _coverSemaphore = new(1 , 1);
-    public ASPNETCoreServer(ObservableCollectionVM collectionVM)
-    {
-        viewmodel = collectionVM;
-        Ip = GetLocalIP();
-    }
+
     private static string GetLocalIP()
     {
         return Dns.GetHostEntry(Dns.GetHostName())
@@ -123,13 +116,13 @@ public class ASPNETCoreServer
 
 
         app.MapGet("/api/health", () => Results.Ok());
-        app.MapGet("/tags", () => Results.Ok(viewmodel.AllTags));
+        app.MapGet("/tags", () => Results.Ok(collectionVM.AllTags));
 
-        app.MapGet("/folders/basicinfo", () => Results.Ok(viewmodel.MangasGroups.Select(x => new MangasGroupDTO(x))));
+        app.MapGet("/folders/basicinfo", () => Results.Ok(collectionVM.MangasGroups.Select(x => new MangasGroupDTO(x))));
 
         app.MapGet("/folders/{guid}", (string guid) =>
         {
-            var folder = viewmodel.MangasGroups.FirstOrDefault(x => x.Guid == guid);
+            var folder = collectionVM.MangasGroups.FirstOrDefault(x => x.Guid == guid);
             if (folder != null)
             {
                 var folderDTO = new MangasGroupDTO(folder);
@@ -142,7 +135,7 @@ public class ASPNETCoreServer
         });
         app.MapGet("/folders/{guid}/count", (string guid) =>
         {
-            var group = viewmodel.MangasGroups.FirstOrDefault(x => x.Guid == guid);
+            var group = collectionVM.MangasGroups.FirstOrDefault(x => x.Guid == guid);
             if (group != null)
             {
                 return Results.Ok(group.Count);
@@ -154,7 +147,7 @@ public class ASPNETCoreServer
         });
         _ = app.MapGet("/folders/{guid}/{index}/{amount}" , async (string guid , int index , int amount) =>
         {
-            var group = viewmodel.MangasGroups.FirstOrDefault(x => x.Guid == guid);
+            var group = collectionVM.MangasGroups.FirstOrDefault(x => x.Guid == guid);
             if (group != null)
             {
                 var mangas = group.Mangas.Skip(index).Take(amount);
@@ -167,11 +160,11 @@ public class ASPNETCoreServer
                 return Results.NotFound();
             }
         });
-        app.MapGet("/mangas", () => Results.Ok(viewmodel.MangaList.Select(x => new MangaDTO(x))));
+        app.MapGet("/mangas", () => Results.Ok(collectionVM.MangaList.Select(x => new MangaDTO(x))));
 
         app.MapGet("/mangas/{guid}", (string guid) =>
         {
-            var manga = viewmodel.MangaList.FirstOrDefault(x => x.Guid == guid);
+            var manga = collectionVM.MangaList.FirstOrDefault(x => x.Guid == guid);
 
             if (manga != null)
             {
@@ -185,21 +178,21 @@ public class ASPNETCoreServer
         });
 
 
-        app.MapGet("downloads/{guid}", async (string guid, HttpContext context) =>
+        _ = app.MapGet("downloads/{guid}" , async (string guid , HttpContext context) =>
         {
-            var manga = viewmodel.MangaList.FirstOrDefault(x => x.Guid == guid);
+            var manga = collectionVM.MangaList.FirstOrDefault(x => x.Guid == guid);
             switch (manga.Type)
             {
                 case "":
-                    using (var archive = SharpCompress.Archives.Zip.ZipArchive.Create())
+                    using (var archive = SharpCompress.Archives.Zip.ZipArchive.CreateArchive())
                     {
                         archive.AddAllFromDirectory(manga.FilePath);
 
-                    //context.Response.ContentLength = manga.FileSize;
-                    context.Response.Headers["X-Estimated-Size"] = manga.FileSize.ToString();
-                    //context.Response.Headers.Append("X-Estimated-Size", manga.FileSize.ToString());
-                    //context.Response.Headers.Append("Access-Control-Expose-Headers", "X-Estimated-Size");
-                    archive.SaveTo(context.Response.Body, new SharpCompress.Writers.WriterOptions(SharpCompress.Common.CompressionType.None));
+                        //context.Response.ContentLength = manga.FileSize;
+                        context.Response.Headers["X-Estimated-Size"] = manga.FileSize.ToString();
+                        //context.Response.Headers.Append("X-Estimated-Size", manga.FileSize.ToString());
+                        //context.Response.Headers.Append("Access-Control-Expose-Headers", "X-Estimated-Size");
+                        archive.SaveTo(context.Response.Body , new SharpCompress.Writers.Zip.ZipWriterOptions(SharpCompress.Common.CompressionType.None));
 
                     }
 
@@ -273,7 +266,7 @@ public class ASPNETCoreServer
         //app.MapGet("/covers/all", () => Results.Ok(viewmodel.MangaList.Select(x => x.CoverPath)));
         app.MapGet("/covers/{guid}", async (string guid,HttpContext httpContext) =>
         {
-                var file = viewmodel.MangaList.SingleOrDefault(x => x.Guid == guid);
+                var file = collectionVM.MangaList.SingleOrDefault(x => x.Guid == guid);
                 var cover = file?.CoverPath;
 
             return File.Exists(cover) ? Results.File(cover) : Results.NotFound();
@@ -284,7 +277,7 @@ public class ASPNETCoreServer
 
         app.MapDelete("/mangas/{guid}" , async (string guid) =>
         {
-            var manga = viewmodel.MangaList.SingleOrDefault(x => x.Guid == guid);
+            var manga = collectionVM.MangaList.SingleOrDefault(x => x.Guid == guid);
             if (manga is null)
                 return Results.NotFound();
 
