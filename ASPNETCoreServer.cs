@@ -118,7 +118,8 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
         app.MapGet("/api/health", () => Results.Ok());
         app.MapGet("/tags", () => Results.Ok(collectionVM.AllTags));
 
-        app.MapGet("/folders/basicinfo", () => Results.Ok(collectionVM.MangasGroups.Select(x => new MangasGroupDTO(x))));
+        app.MapGet("/folders/basicinfo", () =>
+        Results.Ok(collectionVM.MangasGroups.Select(x => new MangasGroupDTO(x))));
 
         app.MapGet("/folders/{guid}", (string guid) =>
         {
