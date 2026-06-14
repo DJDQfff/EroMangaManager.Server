@@ -146,7 +146,7 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
                 return Results.NotFound();
             }
         });
-        _ = app.MapGet("/folders2/{guid}/{index}/{amount}" , async (string guid , int index , int amount) =>
+        _ = app.MapGet("/folders/{guid}/{index}/{amount}" , async (string guid , int index , int amount) =>
         {
             var group = collectionVM.MangasGroups.FirstOrDefault(x => x.Guid == guid);
             if (group != null)
@@ -161,22 +161,8 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
                 return Results.NotFound();
             }
         });
-        _ = app.MapGet("/folders/{guid}/{index}/{amount}" , async (string guid , int index , int amount) =>
-        {
-            var group = collectionVM.MangasGroups.FirstOrDefault(x => x.Guid == guid);
-            if (group != null)
-            {
-                var mangas = group.Mangas.Skip(index).Take(amount);
-                await MangasRequested?.Invoke(mangas);
-                var dtos = mangas.ToAsyncEnumerable().Select(x => new MangaDTO(x));
-                return Results.Ok(dtos);
-            }
-            else
-            {
-                return Results.NotFound();
-            }
-        });
-        app.MapGet("/mangas", () => Results.Ok(collectionVM.MangaList.Select(x => new MangaDTO(x))));
+
+        app.MapGet("/mangas", () => Results.Ok(collectionVM.MangaList));
 
         app.MapGet("/mangas/{guid}", (string guid) =>
         {
@@ -184,8 +170,7 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
 
             if (manga != null)
             {
-                var mangaDTO = new MangaDTO(manga);
-                return Results.Ok(mangaDTO);
+                return Results.Ok(manga);
             }
             else
             {
