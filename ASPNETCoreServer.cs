@@ -146,6 +146,21 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
                 return Results.NotFound();
             }
         });
+        _ = app.MapGet("/folders2/{guid}/{index}/{amount}" , async (string guid , int index , int amount) =>
+        {
+            var group = collectionVM.MangasGroups.FirstOrDefault(x => x.Guid == guid);
+            if (group != null)
+            {
+                var mangas = group.Mangas.Skip(index).Take(amount);
+                await MangasRequested?.Invoke(mangas);
+                var dtos = mangas.ToAsyncEnumerable();
+                return Results.Ok(dtos);
+            }
+            else
+            {
+                return Results.NotFound();
+            }
+        });
         _ = app.MapGet("/folders/{guid}/{index}/{amount}" , async (string guid , int index , int amount) =>
         {
             var group = collectionVM.MangasGroups.FirstOrDefault(x => x.Guid == guid);
