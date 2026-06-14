@@ -264,11 +264,11 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
         //       }
         //);
         #endregion
-        //app.MapGet("/covers/all", () => Results.Ok(viewmodel.MangaList.Select(x => x.CoverPath)));
+        //app.MapGet("/covers/all", () => Results.Ok(viewmodel.MangaList.Select(x => x.CoverUri)));
         app.MapGet("/covers/{guid}", async (string guid,HttpContext httpContext) =>
         {
                 var file = collectionVM.MangaList.SingleOrDefault(x => x.Guid == guid);
-                var cover = file?.CoverPath;
+                var cover = file?.CoverUri;
 
             return File.Exists(cover) ? Results.File(cover) : Results.NotFound();
 
