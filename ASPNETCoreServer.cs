@@ -153,8 +153,7 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
             {
                 var mangas = group.Mangas.Skip(index).Take(amount);
                 await MangasRequested?.Invoke(mangas);
-                var dtos = mangas.ToAsyncEnumerable();
-                return Results.Ok(dtos);
+                return Results.Ok(mangas);
             }
             else
             {
