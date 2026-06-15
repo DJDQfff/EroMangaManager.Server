@@ -28,9 +28,9 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
     public bool IsRunning => _serverTask?.Status == TaskStatus.Running;
 
     // ───────── 事件 ─────────
-    public event Func <Manga,Task<bool>> EventDeleteMang;
-    public event Action<LogEntry> AddLog;
-    public event Func<IEnumerable<Manga>,Task> MangasRequested;
+    public event Func <Manga,Task<bool>>? EventDeleteMang;
+    public event Action<LogEntry>? AddLog;
+    public event Func<IEnumerable<Manga>,Task>? MangasRequested;
     public ObservableCollection<LogEntry> Logs { get; } = [];
     private static readonly SemaphoreSlim _coverSemaphore = new(1 , 1);
 
