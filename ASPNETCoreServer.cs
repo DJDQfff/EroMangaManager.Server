@@ -124,27 +124,12 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
         app.MapGet("/folders/{guid}", (string guid) =>
         {
             var folder = collectionVM.MangasGroups.FirstOrDefault(x => x.Guid == guid);
-            if (folder != null)
-            {
-                var folderDTO = new MangasGroupDTO(folder);
-                return Results.Ok(folderDTO);
-            }
-            else
-            {
-                return Results.NotFound();
-            }
+            return folder != null ? Results.Ok(new MangasGroupDTO(folder)) : Results.NotFound();
         });
         app.MapGet("/folders/{guid}/count", (string guid) =>
         {
             var group = collectionVM.MangasGroups.FirstOrDefault(x => x.Guid == guid);
-            if (group != null)
-            {
-                return Results.Ok(group.Count);
-            }
-            else
-            {
-                return Results.NotFound();
-            }
+            return group is null ? Results.NotFound() : Results.Ok(group.Count);
         });
         _ = app.MapGet("/folders/{guid}/{index}/{amount}" , async (string guid , int index , int amount) =>
         {
@@ -167,18 +152,16 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
         {
             var manga = collectionVM.MangaList.FirstOrDefault(x => x.Guid == guid);
 
-            if (manga != null)
-            {
-                return Results.Ok(manga);
-            }
-            else
-            {
-                return Results.NotFound();
-            }
+            return manga is null ? Results.NotFound() : Results.Ok(manga);
+        });
+        _ = app.MapGet("/mangas/with_tag/{tag}" , async (string tag) =>
+        {
+            var mangas = collectionVM.Search(null , [tag]);
+            await MangasRequested?.Invoke(mangas);
+            return Results.Ok(mangas);
         });
 
-
-        _ = app.MapGet("downloads/{guid}" , async (string guid , HttpContext context) =>
+            _ = app.MapGet("downloads/{guid}" , async (string guid , HttpContext context) =>
         {
             var manga = collectionVM.MangaList.FirstOrDefault(x => x.Guid == guid);
             switch (manga.Type)
@@ -296,3 +279,4 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
         });
     }
 }
+
