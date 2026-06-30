@@ -1,19 +1,13 @@
 ﻿
 using Core.DTOs;
-using Core.IOOperation;
 using Core.Models;
 using Core.ViewModels;
-
-using Microsoft.EntityFrameworkCore;
-
-using PdfSharp.Pdf.Filters;
 
 using SharpCompress.Archives;
 
 using System.Collections.ObjectModel;
 using System.Net;
 using System.Net.Sockets;
-using System.Reflection.Emit;
 
 namespace Server;
 
@@ -22,19 +16,20 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
     Task? _serverTask;
     // ───────── 展示属性 ─────────
     public string Ip { get; private set; } = GetLocalIP();
-    public int Port { get;  set; } = 12965; // 默认值，启动后可由实际值覆盖
+    public int Port { get; set; } = 12965; // 默认值，启动后可由实际值覆盖
 
     public string FullAddress => $"http://{Ip}:{Port}";
     public bool IsRunning => _serverTask?.Status == TaskStatus.Running;
 
     // ───────── 事件 ─────────
-    public event Func <Manga,Task<bool>>? EventDeleteMang;
+    public event Func<Manga , Task<bool>>? EventDeleteMang;
     public event Action<LogEntry>? AddLog;
-    public event Func<IEnumerable<Manga>,Task>? MangasRequested;
+    public event Func<Manga , Task>? LoadMangaInfo;
+    public event Func<IEnumerable<Manga> , Task>? CallCoverSetterAddWork;
     public ObservableCollection<LogEntry> Logs { get; } = [];
     private static readonly SemaphoreSlim _coverSemaphore = new(1 , 1);
 
-    private static string GetLocalIP()
+    private static string GetLocalIP ()
     {
         return Dns.GetHostEntry(Dns.GetHostName())
             .AddressList
@@ -42,15 +37,16 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
             .ToString();
     }
 
-    public void ValidatePort(int expectedPort = 12965)
+    public void ValidatePort (int expectedPort = 12965)
     {
         if (Port != expectedPort)
             throw new InvalidOperationException($"端口不匹配！实际端口：{Port}，预设端口：{expectedPort}");
     }
 
-    public async Task StartServer()
+    public async Task StartServer ()
     {
-        if (IsRunning) return;
+        if (IsRunning)
+            return;
         var builder = WebApplication.CreateBuilder();
 
         // 添加这行代码，允许同步 IO，downloads中使用的是同步方法
@@ -87,10 +83,10 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
 
     }
 
-    private void MapHttpMethod(WebApplication app)
+    private void MapHttpMethod (WebApplication app)
     {
         //中间件：记录日志
-        app.Use(async (context, next) =>
+        app.Use(async (context , next) =>
         {
             var start = DateTime.Now;
             var method = context.Request.Method;
@@ -104,29 +100,30 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
 
             var entry = new LogEntry
             {
-                Time = DateTime.Now,
-                Level = "INFO",
-                IPAddress = clientIp,
-                 StatusCode = statusCode,
-                  Method = method,
-                   Path = path, ElapsedTime = elapsed,
+                Time = DateTime.Now ,
+                Level = "INFO" ,
+                IPAddress = clientIp ,
+                StatusCode = statusCode ,
+                Method = method ,
+                Path = path ,
+                ElapsedTime = elapsed ,
             };
             AddLog?.Invoke(entry);
         });
 
 
-        app.MapGet("/api/health", () => Results.Ok());
-        app.MapGet("/tags", () => Results.Ok(collectionVM.AllTags));
+        app.MapGet("/api/health" , () => Results.Ok());
+        app.MapGet("/tags" , () => Results.Ok(collectionVM.AllTags));
 
-        app.MapGet("/folders/basicinfo", () =>
+        app.MapGet("/folders/basicinfo" , () =>
         Results.Ok(collectionVM.MangasGroups.Select(x => new MangasGroupDTO(x))));
 
-        app.MapGet("/folders/{guid}", (string guid) =>
+        app.MapGet("/folders/{guid}" , (string guid) =>
         {
             var folder = collectionVM.MangasGroups.FirstOrDefault(x => x.Guid == guid);
             return folder != null ? Results.Ok(new MangasGroupDTO(folder)) : Results.NotFound();
         });
-        app.MapGet("/folders/{guid}/count", (string guid) =>
+        app.MapGet("/folders/{guid}/count" , (string guid) =>
         {
             var group = collectionVM.MangasGroups.FirstOrDefault(x => x.Guid == guid);
             return group is null ? Results.NotFound() : Results.Ok(group.Count);
@@ -137,7 +134,7 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
             if (group != null)
             {
                 var mangas = group.Mangas.Skip(index).Take(amount);
-                await MangasRequested?.Invoke(mangas);
+                await CallCoverSetterAddWork?.Invoke(mangas!);
                 return Results.Ok(mangas);
             }
             else
@@ -146,47 +143,64 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
             }
         });
 
-        app.MapGet("/mangas", () => Results.Ok(collectionVM.MangaList));
+        app.MapGet("/mangas" , () => Results.Ok(collectionVM.MangaList));
 
-        app.MapGet("/mangas/{guid}", (string guid) =>
+        app.MapGet("/mangas/{guid}" , (string guid) =>
         {
             var manga = collectionVM.MangaList.FirstOrDefault(x => x.Guid == guid);
 
             return manga is null ? Results.NotFound() : Results.Ok(manga);
         });
-        _ = app.MapGet("/mangas/with_tag/{tag}" , async (string tag) =>
+        app.MapGet("/mangas/with_tag/{tag}" , async (string tag , CancellationToken ct) =>
         {
-            var mangas = collectionVM.Search(null , [tag]);
-            await MangasRequested?.Invoke(mangas);
-            return Results.Ok(mangas);
-        });
-
-            _ = app.MapGet("downloads/{guid}" , async (string guid , HttpContext context) =>
-        {
-            var manga = collectionVM.MangaList.FirstOrDefault(x => x.Guid == guid);
-            switch (manga.Type)
+            // 1. 直接调用异步流式方法，并将 CancellationToken 传递进去
+            var mangasStream = collectionVM.SearchAsync(null , [tag] , ct);
+            // 定义一个异步迭代器，逐个处理并返回
+            async IAsyncEnumerable<Manga> StreamMangas (
+                [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
             {
-                case "":
-                    using (var archive = SharpCompress.Archives.Zip.ZipArchive.CreateArchive())
+                await foreach (var manga in mangasStream)
+                {
+                    // 1. 触发委托处理单个 manga (假设委托内部已更新 manga 的属性)
+                    // 如果委托支持单条处理，建议传入 [manga]
+                    if (CallCoverSetterAddWork != null)
                     {
-                        archive.AddAllFromDirectory(manga.FilePath);
-
-                        //context.Response.ContentLength = manga.FileSize;
-                        context.Response.Headers["X-Estimated-Size"] = manga.FileSize.ToString();
-                        //context.Response.Headers.Append("X-Estimated-Size", manga.FileSize.ToString());
-                        //context.Response.Headers.Append("Access-Control-Expose-Headers", "X-Estimated-Size");
-                        archive.SaveTo(context.Response.Body , new SharpCompress.Writers.Zip.ZipWriterOptions(SharpCompress.Common.CompressionType.None));
-
+                        await CallCoverSetterAddWork.Invoke([manga]);
                     }
 
-                    //context.Response.Body.Position = 0;
-                    // 结束响应
-                    await context.Response.CompleteAsync();
-                    return Results.Empty;
-                default:
-                    return Results.File(manga.FilePath);
+                    // 2. 立即返回当前处理好的 manga
+                    yield return manga;
+                }
             }
+
+            return Results.Ok(StreamMangas(ct));
         });
+        app.MapGet("downloads/{guid}" , async (string guid , HttpContext context) =>
+    {
+        var manga = collectionVM.MangaList.FirstOrDefault(x => x.Guid == guid);
+        switch (manga!.Type)
+        {
+            case "":
+                using (var archive = SharpCompress.Archives.Zip.ZipArchive.CreateArchive())
+                {
+                    archive.AddAllFromDirectory(manga.FilePath);
+
+                    //context.Response.ContentLength = manga.FileSize;
+                    context.Response.Headers["X-Estimated-Size"] = manga.FileSize.ToString();
+                    //context.Response.Headers.Append("X-Estimated-Size", manga.FileSize.ToString());
+                    //context.Response.Headers.Append("Access-Control-Expose-Headers", "X-Estimated-Size");
+                    archive.SaveTo(context.Response.Body , new SharpCompress.Writers.Zip.ZipWriterOptions(SharpCompress.Common.CompressionType.None));
+
+                }
+
+                //context.Response.Body.Position = 0;
+                // 结束响应
+                await context.Response.CompleteAsync();
+                return Results.Empty;
+            default:
+                return Results.File(manga.FilePath);
+        }
+    });
         #region 另一种传输方式，有问题，会中断连接
         //有问题，会中断连接
         //       app.MapGet("/downloads2/{guid}", async (string guid, HttpContext context) =>
@@ -247,10 +261,13 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
         //);
         #endregion
         //app.MapGet("/covers/all", () => Results.Ok(viewmodel.MangaList.Select(x => x.CoverUri)));
-        app.MapGet("/covers/{guid}", async (string guid,HttpContext httpContext) =>
+
+        app.MapGet("/covers/{guid}" , async (string guid , HttpContext httpContext) =>
         {
-                var file = collectionVM.MangaList.SingleOrDefault(x => x.Guid == guid);
-                var cover = file?.CoverUri;
+            var file = collectionVM.MangaList.SingleOrDefault(x => x.Guid == guid);
+
+            await CallCoverSetterAddWork?.Invoke([file]);
+            var cover = file?.CoverUri;
 
             return File.Exists(cover) ? Results.File(cover) : Results.NotFound();
 
