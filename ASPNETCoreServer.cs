@@ -24,8 +24,8 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
     // ───────── 事件 ─────────
     public event Func<Manga , Task<bool>>? EventDeleteMang;
     public event Action<LogEntry>? AddLog;
-    public event Func<Manga , Task>? LoadMangaInfo;
-    public event Func<IEnumerable<Manga> , Task>? CallCoverSetterAddWork;
+    public event Func<Manga , Task>? CallCoverSetterSingleWork;
+    public event Func<IEnumerable<Manga> , Task>? CallCoverSetterAppendWorks;
     public ObservableCollection<LogEntry> Logs { get; } = [];
     private static readonly SemaphoreSlim _coverSemaphore = new(1 , 1);
 
@@ -134,7 +134,7 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
             if (group != null)
             {
                 var mangas = group.Mangas.Skip(index).Take(amount);
-                await CallCoverSetterAddWork?.Invoke(mangas!);
+                await CallCoverSetterAppendWorks?.Invoke(mangas!);
                 return Results.Ok(mangas);
             }
             else
@@ -163,13 +163,14 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
                 {
                     // 1. 触发委托处理单个 manga (假设委托内部已更新 manga 的属性)
                     // 如果委托支持单条处理，建议传入 [manga]
-                    if (CallCoverSetterAddWork != null)
+                    if (manga != null)
                     {
-                        await CallCoverSetterAddWork.Invoke([manga]);
+                        await CallCoverSetterSingleWork?.Invoke(manga);
+                        // 2. 立即返回当前处理好的 manga
+                        yield return manga;
+
                     }
 
-                    // 2. 立即返回当前处理好的 manga
-                    yield return manga;
                 }
             }
 
@@ -266,7 +267,7 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
         {
             var file = collectionVM.MangaList.SingleOrDefault(x => x.Guid == guid);
 
-            await CallCoverSetterAddWork?.Invoke([file]);
+            await CallCoverSetterSingleWork?.Invoke(file);
             var cover = file?.CoverUri;
 
             return File.Exists(cover) ? Results.File(cover) : Results.NotFound();
