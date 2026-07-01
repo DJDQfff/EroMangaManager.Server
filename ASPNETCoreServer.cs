@@ -154,7 +154,7 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
         app.MapGet("/mangas/with_tag/{tag}" , async (string tag , CancellationToken ct) =>
         {
             // 1. 直接调用异步流式方法，并将 CancellationToken 传递进去
-            var mangasStream = collectionVM.SearchAsync(null , [tag] , ct);
+            var mangasStream = collectionVM.FilterMangasAsync(null , [tag] , ct);
             // 定义一个异步迭代器，逐个处理并返回
             async IAsyncEnumerable<Manga> StreamMangas (
                 [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
