@@ -265,13 +265,12 @@ public class ASPNETCoreServer (ObservableCollectionVM collectionVM)
 
         app.MapGet("/covers/{guid}" , async (string guid , HttpContext httpContext) =>
         {
-            var file = collectionVM.MangaList.SingleOrDefault(x => x.Guid == guid);
+            var file = collectionVM.MangaList.Single(x => x.Guid == guid);
 
             await CallCoverSetterSingleWork?.Invoke(file);
             var cover = file?.CoverUri;
 
             return File.Exists(cover) ? Results.File(cover) : Results.NotFound();
-
 
 
         });
