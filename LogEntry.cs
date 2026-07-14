@@ -5,9 +5,9 @@ namespace Server
     public class LogEntry
     {
         public int StatusCode { get; set; }
-        public IPAddress IPAddress { get; set; }
+        public required IPAddress IPAddress { get; set; }
         public DateTime Time { get; set; } = DateTime.Now;
-        public string Method { get; set; }
+        public required string Method { get; set; }
         public PathString Path { get; set; }
         public TimeSpan ElapsedTime { get; set; }
         public string ElapsedDisplay => $"{ElapsedTime.TotalMilliseconds:F0} ms";
