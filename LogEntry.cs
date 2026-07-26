@@ -13,7 +13,7 @@ namespace Server
         public string ElapsedDisplay => $"{ElapsedTime.TotalMilliseconds:F0} ms";
         public string Level { get; set; } = "INFO"; // INFO, WARN, ERROR
 
-        public override string ToString ()
+        public override string ToString()
         {
             return $"{IPAddress} {Method} {Path} → {StatusCode} {ElapsedDisplay}";
         }
