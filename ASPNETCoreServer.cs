@@ -20,10 +20,10 @@ public class ASPNETCoreServer(ObservableCollectionVM collectionVM)
     public bool IsRunning => _serverTask?.Status == TaskStatus.Running;
 
     // ───────── 事件 ─────────
-    public event Func<Manga, Task<bool>>? EventDeleteMang;
-    public event Action<LogEntry>? AddLog;
-    public event Func<Manga, Task>? CallCoverSetterSingleWork;
-    public event Func<IEnumerable<Manga>, Task>? CallCoverSetterAppendWorks;
+    public event Func<Manga, Task<bool>> EventDeleteMang = null!;
+    public event Action<LogEntry> AddLog = null!;
+    public event Func<Manga, Task> CallCoverSetterSingleWork = null!;
+    public event Func<IEnumerable<Manga>, Task> CallCoverSetterAppendWorks = null!;
     public ObservableCollection<LogEntry> Logs { get; } = [];
     private static readonly SemaphoreSlim _coverSemaphore = new(1, 1);
 
@@ -98,7 +98,7 @@ public class ASPNETCoreServer(ObservableCollectionVM collectionVM)
                 {
                     Time = DateTime.Now,
                     Level = "INFO",
-                    IPAddress = clientIp,
+                    IPAddress = clientIp!,
                     StatusCode = statusCode,
                     Method = method,
                     Path = path,
@@ -140,7 +140,7 @@ public class ASPNETCoreServer(ObservableCollectionVM collectionVM)
                 if (group != null)
                 {
                     var mangas = group.Mangas.Skip(index).Take(amount);
-                    await CallCoverSetterAppendWorks?.Invoke(mangas!);
+                    await CallCoverSetterAppendWorks.Invoke(mangas!);
                     return Results.Ok(mangas);
                 }
                 else
@@ -179,7 +179,7 @@ public class ASPNETCoreServer(ObservableCollectionVM collectionVM)
                         // 如果委托支持单条处理，建议传入 [manga]
                         if (manga != null)
                         {
-                            await CallCoverSetterSingleWork?.Invoke(manga);
+                            await CallCoverSetterSingleWork.Invoke(manga);
                             // 2. 立即返回当前处理好的 manga
                             yield return manga;
                         }
@@ -290,7 +290,7 @@ public class ASPNETCoreServer(ObservableCollectionVM collectionVM)
             {
                 var file = collectionVM.MangaList.Single(x => x.Guid == guid);
 
-                await CallCoverSetterSingleWork?.Invoke(file);
+                await CallCoverSetterSingleWork.Invoke(file);
                 var cover = file?.CoverUri;
 
                 return File.Exists(cover) ? Results.File(cover) : Results.NotFound();
